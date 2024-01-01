@@ -8,8 +8,11 @@ from tempfile import TemporaryDirectory
 from time import sleep
 from os import path
 import subprocess
+import glob
+from pydub import AudioSegment
+import random
 
-spoofy_token = "BQBTbIfmGTbMX1TMixdFKntSfWBYKqYsUGv9zO8FIsQ_Hn1a9WR_Fa-LEJgn87UbSoxKVG_6y8Nr2I7gGSvdCQyZxc2hvLeleElCr-COp80JlZrORho"
+spoofy_token = "BQAEpecaJ_HBE2Px_BMAzpRttea7tUO4v5G1qQ7bJw8gtHbFclhdRWpjyrOm7sgFohMLayiXqivaUeENNPC0yu6ro8NhxuFLfmpqg0LqD4b9Ly83yEo"
 
 def get_date(prompt, date_only = False):
     while True:
@@ -77,7 +80,6 @@ def get_track_links(title, artist, isrc = None):
     data = response.json()
     if data['tracks']['total'] == 0 or data['tracks']['items'][0]['preview_url'] is None:
         if isrc is not None:
-            print(f"Couldn't find {title} by ISRC ({isrc}), searching by name")
             return get_track_links(title, artist)
         
         return None
@@ -97,11 +99,20 @@ def download_file(local_path, link):
     f = open(local_path, "wb")
     f.write(requests.get(link).content)
     f.close()
+
+def generate_audio_stream(folder):
+    files = glob.glob(path.join(folder, "*.mp3"))
+    clip = AudioSegment.from_mp3(files[0])
+    for file in files[1:]:
+        clip = clip + AudioSegment.from_mp3(file)
+        
     
+    clip.export(path.join(folder, "audio.mp3"), format="mp3")
 
 date = datetime(2023,12,25) #get_date("Please enter the date you wish to check the charts for", True)
 print(f"Searching for charts for week beginning {date}...")
 chart_items = get_chart_data(date)
+random.shuffle(chart_items)
 
 successful = 0
 
@@ -120,6 +131,7 @@ with TemporaryDirectory() as tmp_dir:
         if successful >= 5:
             break
 
-    sleep(30)
+    generate_audio_stream(tmp_dir)
+    sleep(300)
 
 print(successful)
