@@ -14,7 +14,7 @@ import random
 from urllib.parse import quote_plus
 from pathlib import Path
 
-spoofy_token = "BQCsBhHKY0OSGzer2AtMUq8L39SJ5wlWMbRnBXx6dpK608PMfZmGlpfswjRDlPzhVynbpr2KpV35h-BWfcF-5_zC1w-LcHJb3ZJBQ97g8S9BQmJvZ6w"
+spoofy_token = "BQDySg5bMb7INcRHPTQPhwFP-kt_S8i4PLp8ERjZ41vOen9jrwA426prQJXAGwj91MHyJpn0xkLR4T-xIfCs3rsZrA-9Y6vR_2GS9clhjYUAs5I2qaA"
 colours = [
     (9, 49, 69), #darkest indigo
     (18, 135, 168), #darker alice
@@ -112,14 +112,13 @@ def get_isrc(chart_id, item_id):
     return data['catNo']
 
 def save_track(directory, position, links, background, title, artist):
-    image_path = path.join(directory, f"{position * 2}.jpg")
+    image_path = path.join(directory, f"{position}.jpg")
     
     download_file(path.join(directory, f"{position}.mp3"), links[0])
     download_file(image_path, links[1])
     
     image = generate_image(background.copy(), image_path, title, artist)
     image.save(image_path)
-    image.save(path.join(directory, f"{(position * 2) + 1}.jpg"))
 
 def generate_image(background, album_path, title, artist):
     font = ImageFont.truetype("OpenSans-Italic.ttf", 40)
@@ -139,36 +138,44 @@ def download_file(local_path, link):
     f.close()
 
 def generate_audio_stream(folder):
+    fade = CROSSFADE / 1000
     config = "ffconcat version 1.0\n"
     
     files = glob.glob(path.join(folder, "*.mp3"))
     clip = AudioSegment.from_mp3(files[0])
-    duration = clip.duration_seconds / 2
+    duration = (clip.duration_seconds - (fade / 2)) / 3
 
-    config = config + f"""file 0.jpg
+    config = config + f"""file start.jpg
 duration {duration}
 file 1.jpg
-duration {duration}
+duration {duration * 2}
 """
 
-    last_file = "1.jpg"
-    for file in files[1:]:
+    for file in files[1:-1]:
         segment = AudioSegment.from_mp3(file)
-        file_name = str(int(Path(file).stem) * 2) + ".jpg"
-        last_file = file_name
-        config = config + f"file {file_name}\nduration {segment.duration_seconds - (CROSSFADE / 1000)}\n"
+        file_name = f"{Path(file).stem}.jpg"
+        config = config + f"file {file_name}\nduration {segment.duration_seconds - fade}\n"
         clip = clip.append(segment, crossfade=CROSSFADE)
 
-    config = config + f"file {file_name}"
+    if(len(files) > 1):
+        last = files[-1]
+        segment = AudioSegment.from_mp3(last)
+        duration = segment.duration_seconds / 2
+        config = config + f"""file {Path(last).stem}.jpg
+duration {duration}
+file end.jpg
+duration {duration}
+file end.jpg"""
+        clip = clip.append(segment, crossfade=CROSSFADE)
 
     with open(path.join(folder, "in.ffconcat"), "w") as f:
         f.write(config)
     
     clip.export(path.join(folder, "audio.mp3"), format="mp3")
 
-def generate_background():
+def generate_background(colour):
     title_font = ImageFont.truetype("font.ttf", 60)
-    background = Image.new("RGB", (W, H), random.choice(colours))
+    background = Image.new("RGB", (W, H), colour)
     drawer = ImageDraw.Draw(background)
     
     draw_centered_text(drawer, "Rank these 5 songs", None, 100, title_font)
@@ -191,34 +198,57 @@ def draw_centered_text(drawer, text, x = None, y = None, font = None):
 
 def generate_video(folder):
     process = subprocess.call('ffmpeg -i in.ffconcat -i audio.mp3 -c:a copy -shortest -c:v libx264 -vf "fps=25,format=yuv420p" out.mp4', cwd=folder)
-    #for line in process.stdout:
-    #    print(line)
     print("Merged!")
     startfile(path.join(folder, "out.mp4"))
 
-date = datetime(2023,4,9) #get_date("Please enter the date you wish to check the charts for", True)
+def generate_cards(folder, colour):
+    font = ImageFont.truetype("font.ttf", 90)
+    start_card = Image.new("RGB", (W, H), colour)
+    drawer = ImageDraw.Draw(start_card)
+    draw_centered_text(drawer, "Rank these 5 songs", None, H / 3, font)
+    draw_centered_text(drawer, "WITHOUT CHANGING", None, H / 2, font)
+    draw_centered_text(drawer, "your order!", None, H * 0.66666, font)
+    start_card.save(path.join(folder, "start.jpg"))
+    
+    end_card = Image.new("RGB", (W, H), colour)
+    drawer = ImageDraw.Draw(end_card)
+    draw_centered_text(drawer, "Let us know", None, (H / 2) - 50, font)
+    draw_centered_text(drawer, "your order!", None, (H / 2) + 50, font)
+    end_card.save(path.join(folder, "end.jpg"))
+
+def random_date(limit):
+    max_timestamp = int(datetime.timestamp(limit))
+    chosen_timestamp = random.randrange(max_timestamp)
+    date = datetime.fromtimestamp(chosen_timestamp)
+    return date
+
+date = random_date(datetime.now()) #datetime(2023,4,9) #get_date("Please enter the date you wish to check the charts for", True)
 print(f"Searching for charts for week beginning {date}...")
 chart_items = get_chart_data(date)
 random.shuffle(chart_items)
 
 successful = 0
-background = generate_background()
+colour = random.choice(colours)
+background = generate_background(colour)
+
 with TemporaryDirectory() as tmp_dir:
     print(f"Downloading to {tmp_dir}")
+    generate_cards(tmp_dir, colour)
+    
     for item in chart_items[:10]:
         isrc = get_isrc(item[2], item[3])
         links = get_track_links(item[0], item[1], isrc)
         if links is None:
             continue
 
-        save_track(tmp_dir, successful, links, background, item[0], item[1])
         successful = successful + 1
+        save_track(tmp_dir, successful, links, background, item[0], item[1])
 
         if successful >= 5:
             break
 
     generate_audio_stream(tmp_dir)
     generate_video(tmp_dir)
-    sleep(300)
+    sleep(3000)
 
 print(successful)
