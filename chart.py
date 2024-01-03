@@ -13,8 +13,9 @@ from pydub import AudioSegment
 import random
 from urllib.parse import quote_plus
 from pathlib import Path
+import shutil
 
-spoofy_token = "BQDySg5bMb7INcRHPTQPhwFP-kt_S8i4PLp8ERjZ41vOen9jrwA426prQJXAGwj91MHyJpn0xkLR4T-xIfCs3rsZrA-9Y6vR_2GS9clhjYUAs5I2qaA"
+spoofy_token = "BQAD97kyT9nxWq5V612_lhdhvwhXTVwthek_B4G_mwBVwkVJ4Boz8oc5P19SeLS-k3acoa0DvHpbQNGUyjrvKlW363_tdSQo-KH0LMPOooW-bJRbFDE"
 colours = [
     (9, 49, 69), #darkest indigo
     (18, 135, 168), #darker alice
@@ -128,7 +129,13 @@ def generate_image(background, album_path, title, artist):
         cover_image = cover_image.resize((600, 600))            
         w,h = cover_image.size
         background.paste(cover_image, (240, 300, 240 + w, 300 + h))
-        draw_centered_text(drawer, f"{title} - {artist}", None, 930, font)
+        text = f"{title} - {artist}"
+
+        if len(text) <= 45:
+            draw_centered_text(drawer, text, None, 930, font)
+        else:
+            draw_centered_text(drawer, title, None, 930, font)
+            draw_centered_text(drawer, artist, None, 980, font)
 
     return background
 
@@ -168,9 +175,7 @@ duration {duration}
 file end.jpg"""
         clip = clip.append(segment, crossfade=CROSSFADE)
 
-    with open(path.join(folder, "in.ffconcat"), "w") as f:
-        f.write(config)
-    
+    write_to_file(path.join(folder, "in.ffconcat"), config)
     clip.export(path.join(folder, "audio.mp3"), format="mp3")
 
 def generate_background(colour):
@@ -196,24 +201,37 @@ def draw_centered_text(drawer, text, x = None, y = None, font = None):
 
     drawer.text((x, y), text, font=font, fill=WHITE)
 
-def generate_video(folder):
+def generate_video(folder, date, chosen):
+    tmp_file = path.join(folder, "out.mp4")
+    target_file = f"content/rank-{date:%Y%m%d}"
     process = subprocess.call('ffmpeg -i in.ffconcat -i audio.mp3 -c:a copy -shortest -c:v libx264 -vf "fps=25,format=yuv420p" out.mp4', cwd=folder)
-    print("Merged!")
-    startfile(path.join(folder, "out.mp4"))
+    shutil.copy(tmp_file, target_file + ".mp4")
+
+    caption = f"""Comment your ranking! Which song is number one?
+
+#music #uk #chart #uktop40 #charts #{date:%Y} #rank #blindrank #react #blindreact #ranking"""
+
+    for choice in chosen:
+        caption = caption + f" #{choice[1].replace(' ', '').lower()}"
+
+    print(caption)
+    write_to_file(target_file + ".txt", caption)
+    startfile(path.abspath(target_file + ".mp4"))
 
 def generate_cards(folder, colour):
-    font = ImageFont.truetype("font.ttf", 90)
+    font = ImageFont.truetype("font.ttf", 80)
+    emphasis_font = ImageFont.truetype("font.ttf", 100)
     start_card = Image.new("RGB", (W, H), colour)
     drawer = ImageDraw.Draw(start_card)
     draw_centered_text(drawer, "Rank these 5 songs", None, H / 3, font)
-    draw_centered_text(drawer, "WITHOUT CHANGING", None, H / 2, font)
-    draw_centered_text(drawer, "your order!", None, H * 0.66666, font)
+    draw_centered_text(drawer, "WITHOUT", None, H / 2, emphasis_font)
+    draw_centered_text(drawer, "changing your order!", None, H * 0.66666, font)
     start_card.save(path.join(folder, "start.jpg"))
     
     end_card = Image.new("RGB", (W, H), colour)
     drawer = ImageDraw.Draw(end_card)
-    draw_centered_text(drawer, "Let us know", None, (H / 2) - 50, font)
-    draw_centered_text(drawer, "your order!", None, (H / 2) + 50, font)
+    draw_centered_text(drawer, "Let us know", None, (H / 2) - 50, emphasis_font)
+    draw_centered_text(drawer, "your order!", None, (H / 2) + 50, emphasis_font)
     end_card.save(path.join(folder, "end.jpg"))
 
 def random_date(limit):
@@ -222,12 +240,16 @@ def random_date(limit):
     date = datetime.fromtimestamp(chosen_timestamp)
     return date
 
+def write_to_file(file, content):
+    with open(file, "w") as f:
+        f.write(content)
+
 date = random_date(datetime.now()) #datetime(2023,4,9) #get_date("Please enter the date you wish to check the charts for", True)
 print(f"Searching for charts for week beginning {date}...")
 chart_items = get_chart_data(date)
 random.shuffle(chart_items)
 
-successful = 0
+chosen = []
 colour = random.choice(colours)
 background = generate_background(colour)
 
@@ -235,20 +257,19 @@ with TemporaryDirectory() as tmp_dir:
     print(f"Downloading to {tmp_dir}")
     generate_cards(tmp_dir, colour)
     
-    for item in chart_items[:10]:
+    for item in chart_items:
         isrc = get_isrc(item[2], item[3])
         links = get_track_links(item[0], item[1], isrc)
         if links is None:
+            print(f"Skipping {item[0]}")
             continue
 
-        successful = successful + 1
-        save_track(tmp_dir, successful, links, background, item[0], item[1])
+        chosen.append((item[0], item[1]))
+        print(f"{len(chosen)}. {item[0]} - {item[1]}")
+        save_track(tmp_dir, len(chosen), links, background, item[0], item[1])
 
-        if successful >= 5:
+        if len(chosen) >= 5:
             break
 
     generate_audio_stream(tmp_dir)
-    generate_video(tmp_dir)
-    sleep(3000)
-
-print(successful)
+    generate_video(tmp_dir, date, chosen)
