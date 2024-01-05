@@ -2,6 +2,7 @@ from secrets import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 from base64 import b64encode
 from urllib.parse import quote_plus
 import requests
+from unidecode import unidecode
 
 token = None
 
@@ -29,11 +30,25 @@ def get_track_links(title, artist, isrc = None):
     
     response = requests.get(url, headers = {"Authorization": f"Bearer {token}"})
     data = response.json()
-    if data['tracks']['total'] == 0 or data['tracks']['items'][0]['preview_url'] is None:
+    track = find_suitable_track(data["tracks"]["items"], artist)
+    
+    if track is None:
         if isrc is not None:
             return get_track_links(title, artist)
         
         return None
-
-    track = data['tracks']['items'][0]    
+   
     return (track['preview_url'], track['album']['images'][0]['url'])
+
+def find_suitable_track(track_list, artist):
+    sanitized_artist = unidecode(artist).lower().replace("&", "and")
+    for t in track_list:
+        if t["preview_url"] is not None:
+            for a in t["artists"]:
+                check_artist = unidecode(a["name"]).lower().replace("&", "and")
+                if check_artist == sanitized_artist or f"the {check_artist}" == sanitized_artist or check_artist == f"the {sanitized_artist}":
+                    return t
+                else:
+                    print(f"{a['name']} != {artist}")
+
+    return None

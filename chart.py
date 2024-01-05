@@ -7,7 +7,7 @@ import random
 import shutil
 from spotify import get_track_links
 from uktop40 import get_chart_data, get_isrc
-from utils import write_to_file
+from utils import write_to_file, get_main_artist
 from video import generate_background, generate_cards, generate_image, generate_audio_stream, generate_video
 
 colours = [
@@ -60,7 +60,7 @@ def generate_caption(chosen):
 
     return caption
 
-date = random_date(datetime.now()) #datetime(2023,4,9) #get_date("Please enter the date you wish to check the charts for", True)
+date = datetime(1980, 1, 15) #random_date(datetime.now()) #datetime(2023,4,9) #get_date("Please enter the date you wish to check the charts for", True)
 print(f"Searching for charts for week beginning {date}...")
 chart_items = get_chart_data(date)
 random.shuffle(chart_items)
@@ -71,11 +71,11 @@ background = generate_background(colour)
 
 with TemporaryDirectory() as tmp_dir:
     print(f"Downloading to {tmp_dir}")
-    generate_cards(tmp_dir, colour)
+    generate_cards(tmp_dir, colour, date)
     
     for item in chart_items:
         isrc = get_isrc(item[2], item[3])
-        links = get_track_links(item[0], item[1], isrc)
+        links = get_track_links(item[0], get_main_artist(item[1]), isrc)
         if links is None:
             print(f"Skipping {item[0]}")
             continue
@@ -89,7 +89,7 @@ with TemporaryDirectory() as tmp_dir:
 
     target_file = path.abspath(f"content/rank-{date:%Y%m%d}")
     
-    raw_vid = generate_video(tmp_dir, 15000)
+    raw_vid = generate_video(tmp_dir, 12800)
     caption = generate_caption(chosen)
     
     shutil.copy(raw_vid, target_file + ".mp4")

@@ -1,5 +1,5 @@
 import glob
-from utils import write_to_file
+from utils import write_to_file, chunk
 from pydub import AudioSegment
 from PIL import Image, ImageDraw, ImageFont
 from os import path
@@ -69,44 +69,52 @@ def trim_audio(clip, max_length):
     return clip[start_pos:end_pos]
 
 def generate_image(background, album_path, title, artist):
-    font = ImageFont.truetype("OpenSans-Italic.ttf", 40)
+    font = ImageFont.truetype("OpenSans-Italic.ttf", 55)
     drawer = ImageDraw.Draw(background)
     
     with Image.open(album_path) as cover_image:
-        cover_image = cover_image.resize((600, 600))            
+        target_size = int(W * 0.85)
+        cover_image = cover_image.resize((target_size, target_size))            
         w,h = cover_image.size
-        background.paste(cover_image, (240, 300, 240 + w, 300 + h))
-        text = f"{title} - {artist}"
+        x = int((W - w) / 2)
+        y = int((H - h) / 3)
+        background.paste(cover_image, (x, y, x + w, y + h))
+        #text = f"{title} - {artist}"
 
-        if len(text) <= 45:
-            draw_centered_text(drawer, text, None, 930, font)
-        else:
-            draw_centered_text(drawer, title, None, 930, font)
-            draw_centered_text(drawer, artist, None, 980, font)
+        lines_to_write = [c for c in chunk(title, 35)]
+        lines_to_write += [c for c in chunk(artist, 35)]
+        text_start = y + h + 30
+
+        for i in range(len(lines_to_write)):        
+            draw_centered_text(drawer, lines_to_write[i], None, text_start + (80 * i), font)
 
     return background
 
 def generate_background(colour):
-    title_font = ImageFont.truetype("font.ttf", 60)
+    #title_font = ImageFont.truetype("font.ttf", 60)
     background = Image.new("RGB", (W, H), colour)
-    drawer = ImageDraw.Draw(background)
+    #drawer = ImageDraw.Draw(background)
     
-    draw_centered_text(drawer, "Rank these 5 songs", None, 100, title_font)
-    draw_centered_text(drawer, "without changing order", None, 200, title_font)
+    #draw_centered_text(drawer, "Rank these 5 songs", None, 100, title_font)
+    #draw_centered_text(drawer, "without changing order", None, 200, title_font)
 
-    for i in range(1, 6):
-        drawer.text((100, 1000 + (i * 100)), str(i), font=title_font, fill=WHITE)
+    #for i in range(1, 6):
+    #    drawer.text((100, 1000 + (i * 100)), str(i), font=title_font, fill=WHITE)
 
     return background
 
-def generate_cards(folder, colour):
+def generate_cards(folder, colour, date):
     font = ImageFont.truetype("font.ttf", 80)
     emphasis_font = ImageFont.truetype("font.ttf", 100)
     start_card = Image.new("RGB", (W, H), colour)
     drawer = ImageDraw.Draw(start_card)
-    draw_centered_text(drawer, "Rank these 5 songs", None, H / 3, font)
-    draw_centered_text(drawer, "WITHOUT", None, H / 2, emphasis_font)
-    draw_centered_text(drawer, "changing your order!", None, H * 0.66666, font)
+    start_start = H / 3
+    draw_centered_text(drawer, "Rank these 5 songs", None, start_start, font)
+    draw_centered_text(drawer, "WITHOUT", None, start_start + 120, emphasis_font)
+    draw_centered_text(drawer, "changing your order!", None, start_start + 260, font)
+
+    draw_centered_text(drawer, f"{date:%Y} chart edition!", None, H * 0.666, font)
+
     start_card.save(path.join(folder, "start.jpg"))
     
     end_card = Image.new("RGB", (W, H), colour)
